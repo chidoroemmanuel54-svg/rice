@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Rice Purity Score</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="score-page">
+    <div class="container score-container">
+      <p>
+        <a href="https://ricethresher.org" style="color: #0a509e; text-decoration: none; font-weight: bold;">
+          Rice Thresher Logo
+        </a>
+      </p>
+
+      <p class="italic-intro">
+        The Purity Test has historically served as a segue from O-week to true college life at Rice.<br />
+        It's a voluntary opportunity for O-week groups to bond, and for students to track the maturation<br />
+        of their experiences throughout college.
+      </p>
+
+      <p class="caution">
+        <strong>Caution: This is not a bucket list. Completion of all items on this test will likely result in death.</strong>
+      </p>
+
+      <h2>Your score:</h2>
+      <h1 id="score">--</h1>
+
+      <div class="share-actions">
+        <a href="index.html"><button type="button">Take again!</button></a>
+      </div>
+
+      <p>Thank you for your submission!</p>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const urlScore = params.get('score');
+      const score = sessionStorage.getItem('score');
+
+      if (urlScore != score) {
+        window.location.href = 'index.html';
+      }
+
+      if (score) {
+        document.getElementById('score').textContent = score;
+      }
+    </script>
+  </body>
+</html>
