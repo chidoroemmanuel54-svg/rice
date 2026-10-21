@@ -26,6 +26,7 @@
 
       <h2>Your score:</h2>
       <h1 id="score">--</h1>
+      <p id="score-meaning"></p>
 
       <div class="share-actions">
         <a href="index.html"><button type="button">Take again!</button></a>
@@ -36,15 +37,32 @@
 
     <script>
       const params = new URLSearchParams(window.location.search);
-      const urlScore = params.get('score');
-      const score = sessionStorage.getItem('score');
+      const checkedParam = params.get('checked');
+      const checkedCount = Number(checkedParam);
+      const totalQuestions = 100;
 
-      if (urlScore != score) {
+      if (checkedParam === null || !Number.isInteger(checkedCount) || checkedCount < 0 || checkedCount > totalQuestions) {
         window.location.href = 'index.html';
-      }
+      } else {
+        const score = totalQuestions - checkedCount;
+        let meaning;
 
-      if (score) {
-        document.getElementById('score').textContent = score;
+        if (score >= 90) {
+          meaning = 'Very pure';
+        } else if (score >= 80) {
+          meaning = 'Fairly pure';
+        } else if (score >= 70) {
+          meaning = 'Average';
+        } else if (score >= 60) {
+          meaning = 'A bit wild';
+        } else if (score >= 30) {
+          meaning = 'Very experienced';
+        } else {
+          meaning = "...you've lived a lot";
+        }
+
+        document.getElementById('score').textContent = `${score} / ${totalQuestions}`;
+        document.getElementById('score-meaning').textContent = `Score meaning: ${meaning}`;
       }
     </script>
   </body>

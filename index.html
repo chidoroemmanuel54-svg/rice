@@ -125,6 +125,7 @@
         <button type="button" id="calculate-btn">Calculate my score</button>
         <button type="button" id="clear-btn" class="secondary">Clear checkboxes</button>
       </div>
+      <p id="log-status" role="status" aria-live="polite"></p>
 
       <p>privacy policy</p>
 
@@ -150,30 +151,32 @@
         item.style.setProperty('--item-number', `'${index + 1}. '`);
       });
 
-      calculateBtn.addEventListener('click', () => {
-        const checkedBoxes = [...boxes]
+      calculateBtn.addEventListener('click', async () => {
+        const checkedQuestionIds = [...boxes]
           .filter((box) => box.checked)
           .map((box) => box.id);
+        const status = document.getElementById('log-status');
 
-        fetch('/api/score', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ checked: checkedBoxes })
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            const scoreValue = data.score;
-            sessionStorage.setItem('score', String(scoreValue));
-            window.location.href = `score.html?score=${scoreValue}`;
-          })
-          .catch((error) => {
-            console.error('Error sending score data:', error);
-            const fallbackScore = 100 - checkedBoxes.length;
-            sessionStorage.setItem('score', String(fallbackScore));
-            window.location.href = `score.html?score=${fallbackScore}`;
+        calculateBtn.disabled = true;
+        status.textContent = '';
+
+        try {
+          const response = await fetch('/api/log-checked-questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ checkedQuestionIds })
           });
+
+          if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+          }
+
+          window.location.href = `score.html?checked=${checkedQuestionIds.length}`;
+        } catch (error) {
+          console.error('err', error);
+          status.textContent = ' Please try again.';
+          calculateBtn.disabled = false;
+        }
       });
 
       clearBtn.addEventListener('click', () => {
@@ -185,4 +188,3 @@
     </script>
   </body>
 </html>
-

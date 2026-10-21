@@ -1,12 +1,16 @@
 const express = require('express');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
-const { MongoClient } = require('mongodb');
 const app = express();
-const PORT = 3000;
-const mongoUri = process.env.MONGODB_URI;
-const mongoDbName = process.env.MONGODB_DB || 'rice_purity';
-let scoreSubmissions;
+const PORT = process.env.PORT || 3001;
+
+const pagePaths = new Set(['/', '/index.html', '/score.html']);
+
+app.use((req, res, next) => {
+    if (req.method === 'GET' && pagePaths.has(req.path)) {
+        console.info(`[PAGE VISIT] ${new Date().toISOString()} ${req.path}`);
+    }
+    next();
+});
 
 app.use(express.json());
 app.use(express.static(__dirname));
@@ -15,105 +19,73 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-function getClientIp(req) {
-    return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
-        .split(',')[0]
-        .trim();
-}
+app.post('/api/log-checked-questions', (req, res) => {
+    const checkedQuestionIds = req.body?.checkedQuestionIds;
+    const validQuestionId = /^q(?:[1-9]|[1-9]\d|100)$/;
 
-async function lookupLocation(ip) {
-    const unknownLocation = {
-        country: 'unknown',
-        region: null,
-        city: null,
-        timezone: null
-    };
-
-    try {
-        if (ip && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
-            const geoRes = await fetch(`https://ipapi.co/${encodeURIComponent(ip)}/json/`);
-            if (!geoRes.ok) return unknownLocation;
-            const geoData = await geoRes.json();
-
-            return {
-                country: geoData.country_name || 'unknown',
-                region: geoData.region || null,
-                city: geoData.city || null,
-                timezone: geoData.timezone || null
-            };
-        }
-    } catch (error) {
-        console.log(`[SERVER] Geo lookup failed: ${error.message}`);
+    if (
+        !Array.isArray(checkedQuestionIds) ||
+        checkedQuestionIds.length > 100 ||
+        !checkedQuestionIds.every((id) => typeof id === 'string' && validQuestionId.test(id)) ||
+        new Set(checkedQuestionIds).size !== checkedQuestionIds.length
+    ) {
+        return res.status(400).json({ error: 'Invalid checked question IDs.' });
     }
-    return unknownLocation;
-}
 
-app.get('/api/ip', async (req, res) => {
-    const ip = getClientIp(req);
-    const location = await lookupLocation(ip);
-
-    console.log(`[SERVER] visitor IP: ${ip}`);
-    if (location.country !== 'unknown') {
-        console.log(`[SERVER] Location: ${location.city || 'unknown city'}, ${location.region || 'unknown region'}, ${location.country}`);
-    } else {
-        console.log(`[SERVER] Location: unknown`);
-    }
-    res.json({ ip, location });
+    console.info(
+        `[CHECKED QUESTIONS] ${new Date().toISOString()} IDs: ${checkedQuestionIds.join(', ') || '(none)'}`
+    );
+    res.sendStatus(204);
 });
 
-app.post('/api/score', async (req, res) => {
-    const checkedQuestions = Array.isArray(req.body.checked) ? req.body.checked : [];
-    const totalQuestions = 100;
-    const score = Math.max(0, totalQuestions - checkedQuestions.length);
-    const ip = getClientIp(req);
-    const location = await lookupLocation(ip);
-    const submittedAt = new Date();
-
+app.get('/api/ip-lookup', async (req, res) => {
     try {
-        const submission = {
-            checkedQuestions,
-            totalQuestions,
-            score,
-            ip,
-            location,
-            submittedAt
-        };
-        const result = await scoreSubmissions.insertOne(submission);
+        let clientIp = req.query.ip;
 
-        console.log('[SERVER] Score submission received:');
-        console.log(`  IP: ${ip}`);
-        console.log(`  Location: ${location.city || 'unknown city'}, ${location.region || 'unknown region'}, ${location.country}`);
-        console.log(`  Timestamp: ${submittedAt.toISOString()}`);
+        if (!clientIp) {
+            const ipResponse = await fetch('https://api.ipify.org?format=json');
+            if (!ipResponse.ok) {
+                throw new Error('Failed to fetch IP address');
+            }
 
+            const ipData = await ipResponse.json();
+            clientIp = ipData.ip;
+        }
+
+        if (clientIp === '127.0.0.1' || clientIp === '::1') {
+            clientIp = '8.8.8.8';
+        }
+
+        const apiUrl = `http://ip-api.com/json/${encodeURIComponent(clientIp)}`;
+        const apiResponse = await fetch(apiUrl);
+
+        if (!apiResponse.ok) {
+            throw new Error(`IP api responded with: ${apiResponse.status}`);
+        }
+
+        const data = await apiResponse.json();
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'IP lookup failed');
+        }
+
+        console.info(
+            `[IP LOOKUP] ${new Date().toISOString()} succeeded for ${clientIp}\n` +
+            JSON.stringify(data, null, 2)
+        );
         res.json({
-            checkedQuestions,
-            totalQuestions,
-            score,
-            submissionId: result.insertedId
+            success: true,
+            ipUsed: clientIp,
+            data
         });
     } catch (error) {
-        console.error(`[SERVER] Could not save score submission: ${error.message}`);
-        res.status(503).json({ error: 'Could not save your score. Please try again.' });
+        console.error('Error fetching IP data:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch geolocation data'
+        });
     }
 });
 
-async function startServer() {
-    if (!mongoUri) {
-        throw new Error('MONGODB_URI is not set. Add your MongoDB connection string to the environment.');
-    }
-
-    const mongoClient = new MongoClient(mongoUri);
-    await mongoClient.connect();
-    const database = mongoClient.db(mongoDbName);
-    scoreSubmissions = database.collection('score_submissions');
-
-    app.listen(PORT, () => {
-        console.log(`[SERVER] Connected to MongoDB database "${mongoDbName}".`);
-        console.log(`[SERVER] Server is running on port ${PORT}`);
-    });
-}
-
-startServer().catch((error) => {
-    console.error(`[SERVER] Could not start: ${error.message}`);
-    process.exit(1);
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
 });
